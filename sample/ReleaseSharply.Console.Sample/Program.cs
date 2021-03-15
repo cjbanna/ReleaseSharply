@@ -9,7 +9,12 @@ namespace ReleaseSharply.Console.Sample
     {
         static async Task Main(string[] args)
         {
-            var manager = new FeatureManager();
+            var url = "https://localhost:5001";
+            var featureGroup = "ConsoleGroup";
+            var username = "ConsoleClient";
+            var password = "SuperSecretPassword";
+            var scope = "features.read";
+            var manager = new FeatureManager(url, featureGroup, username, password, scope);
             await manager.StartAsync();
 
             await Task.Delay(TimeSpan.FromMinutes(100));
