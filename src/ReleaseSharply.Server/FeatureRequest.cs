@@ -1,6 +1,6 @@
 ﻿namespace ReleaseSharply.Server
 {
-    public class PublishRequest
+    public class FeatureRequest
     {
         public string FeatureGroup { get; set; }
         public string Name { get; set; }

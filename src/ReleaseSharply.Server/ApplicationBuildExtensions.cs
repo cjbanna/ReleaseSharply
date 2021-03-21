@@ -1,6 +1,8 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using ReleaseSharply.Server.Data;
+using ReleaseSharply.Server.Models;
 using System;
 using System.IO;
 using System.Text;
@@ -10,11 +12,8 @@ namespace ReleaseSharply.Server
 {
     public static class ApplicationBuildExtensions
     {
-        public static IApplicationBuilder UseReleaseSharply(this IApplicationBuilder app, Action<ReleaseSharplyOptions> configure = null)
+        public static IApplicationBuilder UseReleaseSharply(this IApplicationBuilder app)
         {
-            var options = new ReleaseSharplyOptions();
-            configure(options);
-
             app.UseIdentityServer();
             app.UseAuthentication();
             app.UseAuthorization();
@@ -26,17 +25,25 @@ namespace ReleaseSharply.Server
                     .RequireAuthorization(nameof(Policies.FeatureFlagRead));
 
                 var featureHub = endpoints.ServiceProvider.GetService<FeatureHub>();
+                //var featureManager = endpoints.ServiceProvider.GetService<IFeatureManager>();
 
-                endpoints.MapGet("api/featureGroups/{featureGroup}", async context =>
+                // Features
+                endpoints.MapGet("api/features", async context =>
                 {
-                    var featureGroup = context.Request.RouteValues["featureGroup"];
-                    var features = options.FeatureProvider?.Invoke(featureGroup?.ToString());
+                    using (var scope = endpoints.ServiceProvider.CreateScope())
+                    {
+                        var featureManager = scope.ServiceProvider.GetService<IFeatureManager>();
+                        var featureGroup = context.Request.Query["featureGroup"].ToString();
+                        var features = await featureManager.GetFeaturesAsync(featureGroup);
 
-                    var body = JsonSerializer.Serialize(features);
-                    var bytes = Encoding.UTF8.GetBytes(body);
-                    await context.Response.BodyWriter.WriteAsync(bytes);
+                        var body = JsonSerializer.Serialize(features);
+                        var bytes = Encoding.UTF8.GetBytes(body);
+                        context.Response.ContentType = "application/json";
+                        await context.Response.BodyWriter.WriteAsync(bytes);
+                    }
                 }).RequireAuthorization(nameof(Policies.FeatureFlagRead));
 
+                // FeatureGroup Subscribe
                 endpoints.MapPost("api/featureGroups/{featureGroup}/subscribe", async context =>
                 {
                     using (var reader = new StreamReader(context.Request.Body))
@@ -54,27 +61,60 @@ namespace ReleaseSharply.Server
                     }
                 }).RequireAuthorization(nameof(Policies.FeatureFlagRead));
 
-                endpoints.MapPost("api/features/publish", async context =>
+                // Feature Add
+                endpoints.MapPost("api/features", async context =>
                 {
-                    using (var reader = new StreamReader(context.Request.Body))
+                    using (var scope = endpoints.ServiceProvider.CreateScope())
                     {
-                        var body = await reader.ReadToEndAsync();
-                        var request = JsonSerializer.Deserialize<PublishRequest>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                        var featureManager = scope.ServiceProvider.GetService<IFeatureManager>();
 
-                        await featureHub.SendUpdateAsync(request.FeatureGroup, new[] { new Feature(request.Name, request.IsEnabled) });
+                        using (var reader = new StreamReader(context.Request.Body))
+                        {
+                            var body = await reader.ReadToEndAsync();
+                            var feature = JsonSerializer.Deserialize<Feature>(body);
 
-                        context.Response.StatusCode = StatusCodes.Status200OK;
+                            await featureManager.AddFeatureAsync(feature);
+
+                            context.Response.StatusCode = StatusCodes.Status200OK;
+                        }
                     }
-                }).RequireAuthorization(nameof(Policies.FeatureFlagWrite)); ;
+                }).RequireAuthorization(nameof(Policies.FeatureFlagWrite));
 
-                endpoints.MapPost("foo", async context =>
+                // Feature Update
+                endpoints.MapPut("api/features", async context =>
                 {
-                    using (var reader = new StreamReader(context.Request.Body))
+                    using (var scope = endpoints.ServiceProvider.CreateScope())
                     {
-                        var body = await reader.ReadToEndAsync();
+                        var featureManager = scope.ServiceProvider.GetService<IFeatureManager>();
 
-                        var bytes = Encoding.UTF8.GetBytes(body);
-                        await context.Response.BodyWriter.WriteAsync(bytes);
+                        using (var reader = new StreamReader(context.Request.Body))
+                        {
+                            var body = await reader.ReadToEndAsync();
+                            var feature = JsonSerializer.Deserialize<Feature>(body);
+
+                            await featureManager.UpdateFeatureAsync(feature);
+
+                            context.Response.StatusCode = StatusCodes.Status200OK;
+                        }
+                    }
+                }).RequireAuthorization(nameof(Policies.FeatureFlagWrite));
+
+                // FeatureGroup Add
+                endpoints.MapPost("api/featureGroups", async context =>
+                {
+                    using (var scope = endpoints.ServiceProvider.CreateScope())
+                    {
+                        var featureManager = scope.ServiceProvider.GetService<IFeatureManager>();
+
+                        using (var reader = new StreamReader(context.Request.Body))
+                        {
+                            var body = await reader.ReadToEndAsync();
+                            var featureGroup = JsonSerializer.Deserialize<FeatureGroup>(body);
+
+                            await featureManager.AddFeatureGroupAsync(featureGroup);
+
+                            context.Response.StatusCode = StatusCodes.Status200OK;
+                        }
                     }
                 }).RequireAuthorization(nameof(Policies.FeatureFlagWrite));
             });

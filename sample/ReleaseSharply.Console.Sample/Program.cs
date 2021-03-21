@@ -10,7 +10,7 @@ namespace ReleaseSharply.Console.Sample
         static async Task Main(string[] args)
         {
             var url = "https://localhost:5001";
-            var featureGroup = "ConsoleGroup";
+            var featureGroup = "ConsoleFeatures";
             var username = "ConsoleClient";
             var password = "SuperSecretPassword";
             var scope = "features.read";

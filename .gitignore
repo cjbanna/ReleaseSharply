@@ -363,3 +363,8 @@ FodyWeavers.xsd
 /src/PegsAndJokers.Api/Properties/ServiceDependencies
 /src/PegsAndJokers.Api/.config
 /src/pegs-and-jokers/.vscode
+
+# sqlite
+*.db
+*.db-shm
+*.db-wal

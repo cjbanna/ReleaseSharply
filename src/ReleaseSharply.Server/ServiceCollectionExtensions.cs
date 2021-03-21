@@ -3,8 +3,12 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using ReleaseSharply.Server.Data;
 using System;
 using System.Linq;
+using Microsoft.EntityFrameworkCore;
+using System.Data.Common;
+using Microsoft.Data.Sqlite;
 
 namespace ReleaseSharply.Server
 {
@@ -30,12 +34,34 @@ namespace ReleaseSharply.Server
                 throw new ArgumentException("ApiScopes cannot be empty", nameof(options.ApiScopes));
             }
 
+            services.AddSignalR();
+
+            services
+                .AddSingleton<FeatureHub>()
+                .AddTransient<SeedDataGenerator>()
+                .AddTransient<IFeatureManager, FeatureManager>();
+
+            services.AddDbContext<FeaturesDbContext>(dbContextOptions =>
+            {
+                //dbContextOptions.UseSqlite(CreateInMemoryDatabase());
+                dbContextOptions.UseSqlite("Filename=ReleaseSharply.db");
+                //}, ServiceLifetime.Singleton, ServiceLifetime.Singleton);
+            });
+
             var isDevelopment = false;
             using (var scope = services.BuildServiceProvider().CreateScope())
             {
                 var env = scope.ServiceProvider.GetService<IWebHostEnvironment>();
                 isDevelopment = env.IsDevelopment();
+
+                var s = scope.ServiceProvider.GetService<SeedDataGenerator>();
+                s.SeedData();
             }
+
+            //var seedData = services.BuildServiceProvider().GetService<SeedDataGenerator>();
+            //seedData.SeedData();
+
+            
 
             var builder = services.AddIdentityServer()
                 .AddInMemoryClients(options.Clients)
@@ -80,9 +106,16 @@ namespace ReleaseSharply.Server
                     options.Authority = "https://localhost:5001";
                 });
 
+            return services;
+        }
 
-            services.AddSignalR();
-            return services.AddSingleton<FeatureHub>();
+        private static DbConnection CreateInMemoryDatabase()
+        {
+            var connection = new SqliteConnection("Filename=:memory:");
+
+            connection.Open();
+
+            return connection;
         }
     }
 }

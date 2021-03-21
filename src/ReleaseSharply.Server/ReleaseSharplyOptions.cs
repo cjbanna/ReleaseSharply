@@ -1,11 +1,11 @@
-﻿using System;
+﻿using ReleaseSharply.Server.Models;
+using System;
 using System.Collections.Generic;
-using System.Text;
 
 namespace ReleaseSharply.Server
 {
     public class ReleaseSharplyOptions
     {
-        public Func<string, IEnumerable<Feature>> FeatureProvider { get; set; }
+        public Func<string, IEnumerable<Feature>> FeatureGroupProvider { get; set; }
     }
 }

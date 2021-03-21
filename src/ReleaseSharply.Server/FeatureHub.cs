@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.SignalR;
+using ReleaseSharply.Server.Models;
 using System;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;

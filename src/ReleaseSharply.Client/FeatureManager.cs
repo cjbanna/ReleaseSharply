@@ -92,11 +92,12 @@ namespace ReleaseSharply.Client
         {
             var client = new HttpClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _authToken);
-            var url = $"{_serverHostName}/api/featureGroups/{_featureGroup}";
+            var url = $"{_serverHostName}/api/features?featureGroup={_featureGroup}";
             var response = await client.GetAsync(url);
             response.EnsureSuccessStatusCode();
             var body = await response.Content.ReadAsStringAsync();
-            var features = JsonSerializer.Deserialize<Feature[]>(body);
+            var features = JsonSerializer.Deserialize<Feature[]>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            Console.WriteLine(body);
             foreach (var feature in features)
             {
                 _features.AddOrUpdate(feature.Name, feature.IsEnabled, (name, _) => feature.IsEnabled);

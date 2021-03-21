@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using System.Linq;
+using ReleaseSharply.Server.Data;
 
 namespace ReleaseSharply.Server.Webapi.Sample
 {
@@ -20,10 +20,9 @@ namespace ReleaseSharply.Server.Webapi.Sample
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            //services.AddSignalR();
             services.AddControllers();
 
-            //services.AddSingleton<FeatureHub>();
+            // TODO: 
             services.AddReleaseSharply(options =>
             {
                 options.ApiResources = new[]
@@ -75,23 +74,7 @@ namespace ReleaseSharply.Server.Webapi.Sample
 
             app.UseRouting();
 
-            app.UseReleaseSharply(options =>
-            {
-                options.FeatureProvider = (featureGroup) =>
-                {
-                    switch (featureGroup)
-                    {
-                        case "ConsoleGroup":
-                            return new[]
-                            {
-                                new Feature("foo", false),
-                                new Feature("bar", true)
-                            };
-                        default:
-                            return Enumerable.Empty<Feature>();
-                    }
-                };
-            });
+            app.UseReleaseSharply();
 
             app.UseEndpoints(endpoints =>
             {
