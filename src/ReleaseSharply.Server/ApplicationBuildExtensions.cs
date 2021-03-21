@@ -25,7 +25,6 @@ namespace ReleaseSharply.Server
                     .RequireAuthorization(nameof(Policies.FeatureFlagRead));
 
                 var featureHub = endpoints.ServiceProvider.GetService<FeatureHub>();
-                //var featureManager = endpoints.ServiceProvider.GetService<IFeatureManager>();
 
                 // Features
                 endpoints.MapGet("api/features", async context =>

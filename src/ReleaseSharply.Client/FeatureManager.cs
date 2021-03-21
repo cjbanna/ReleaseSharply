@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.SignalR.Client;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -19,7 +21,7 @@ namespace ReleaseSharply.Client
     {
         private string _authToken;
         private DateTime _tokenExpiration = DateTime.MinValue;
-        private readonly ConcurrentDictionary<string, bool> _features;
+        private ImmutableDictionary<string, Feature> _features;
         private readonly string _serverHostName;
         private readonly string _featureGroup;
         private readonly string _username;
@@ -33,7 +35,7 @@ namespace ReleaseSharply.Client
             string password,
             string scope)
         {
-            _features = new ConcurrentDictionary<string, bool>();
+            _features = ImmutableDictionary<string, Feature>.Empty;
             _serverHostName = serverHostName;
             _featureGroup = featureGroup;
             _username = username;
@@ -41,9 +43,12 @@ namespace ReleaseSharply.Client
             _scope = scope;
         }
 
-        public async Task<bool> IsEnabledAsync(string feature)
+        public async Task<bool> IsEnabledAsync(string featureName)
         {
-            return await Task.FromResult(_features.GetValueOrDefault(feature, false));
+            var feature = default(Feature);
+            _features.TryGetValue(featureName, out feature);
+            var isEnabled = feature?.IsEnabled == true;
+            return await Task.FromResult(isEnabled);
         }
 
         public async Task StartAsync()
@@ -62,7 +67,7 @@ namespace ReleaseSharply.Client
             connection.Reconnected += Connection_Reconnected;
 
             await connection.StartAsync();
-            await RefreshFeaturesAsync();
+            _features = await RefreshFeaturesAsync();
             await SubscribeToFeatureGroup();
         }
 
@@ -88,7 +93,7 @@ namespace ReleaseSharply.Client
             return _authToken;
         }
 
-        private async Task<IEnumerable<Feature>> RefreshFeaturesAsync()
+        private async Task<ImmutableDictionary<string, Feature>> RefreshFeaturesAsync()
         {
             var client = new HttpClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _authToken);
@@ -98,11 +103,13 @@ namespace ReleaseSharply.Client
             var body = await response.Content.ReadAsStringAsync();
             var features = JsonSerializer.Deserialize<Feature[]>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             Console.WriteLine(body);
+
+            var newFeatures = ImmutableDictionary<string, Feature>.Empty;
             foreach (var feature in features)
             {
-                _features.AddOrUpdate(feature.Name, feature.IsEnabled, (name, _) => feature.IsEnabled);
+                newFeatures = newFeatures.Add(feature.Name, feature);
             }
-            return features;
+            return newFeatures;
         }
 
         private async Task SubscribeToFeatureGroup()
@@ -133,14 +140,27 @@ namespace ReleaseSharply.Client
         private void OnReceiveUpdate(Feature[] features)
         {
             Console.WriteLine("---");
+
+            var newFeatures = _features;
             foreach (var feature in features)
             {
-                _features.AddOrUpdate(feature.Name, feature.IsEnabled, (name, _) => feature.IsEnabled);
+                var idExists = newFeatures.Values.SingleOrDefault(f => f.Id == feature.Id);
+                if (idExists != null)
+                {
+                    newFeatures = newFeatures.Remove(idExists.Name);
+                    newFeatures = newFeatures.SetItem(feature.Name, feature);
+                }
+                else
+                {
+                    newFeatures = newFeatures.Add(feature.Name, feature);
+                }
             }
+
+            _features = newFeatures;
 
             foreach (var feature in _features)
             {
-                Console.WriteLine($"{feature.Key}:{feature.Value}");
+                Console.WriteLine($"{feature.Key}:{feature.Value.IsEnabled}");
             }
         }
     }
