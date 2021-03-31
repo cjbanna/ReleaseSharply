@@ -4,7 +4,12 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using ReleaseSharply.Server.Data;
+using Microsoft.IdentityModel.Tokens;
+using ReleaseSharply.Server.Options;
+using ReleaseSharply.Server.Webapi.Sample.Options;
+using System;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
 
 namespace ReleaseSharply.Server.Webapi.Sample
 {
@@ -22,27 +27,14 @@ namespace ReleaseSharply.Server.Webapi.Sample
         {
             services.AddControllers();
 
-            // TODO: 
             services.AddReleaseSharply(options =>
             {
-                options.ApiResources = new[]
-                {
-                    new ApiResource
-                    {
-                        Name = "FeatureFlags",
-                        Scopes = new string[] { "features.read", "features.write" },
-                        ApiSecrets = new Secret[] { new Secret("ScopeSecret".Sha256()) }
-                    }
-                };
-
-                options.ApiScopes = new[]
-                {
-                    new ApiScope("features.read", ""),
-                    new ApiScope("features.write", "")
-                };
-
                 options.Clients = new[]
                 {
+                    // TODO: make this into a builder? Use Azure Key Vault as example?
+                    // .AddClient(string clientId, string secret).WithReadScope()
+                    // .AddClient().WithWriteScope()
+
                     new Client
                     {
                         ClientId = "ConsoleClient",
@@ -58,6 +50,17 @@ namespace ReleaseSharply.Server.Webapi.Sample
                         AllowedScopes = new[] { "features.write" }
                     }
                 };
+
+                // Setup localhost SSL cert
+                var appOptions = new ConsoleAppOptions();
+                Configuration.Bind(nameof(ConsoleAppOptions), appOptions);
+
+                if (!string.IsNullOrWhiteSpace(appOptions.CertificateBase64))
+                {
+                    var bytes = Convert.FromBase64String(appOptions.CertificateBase64);
+                    var certificate = new X509Certificate2(bytes, appOptions.CertificatePassword);
+                    options.SigningCredentials = new X509SigningCredentials(certificate);
+                }
             });
 
         }

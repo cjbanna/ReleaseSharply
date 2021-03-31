@@ -1,4 +1,4 @@
-﻿namespace ReleaseSharply.Server
+﻿namespace ReleaseSharply.Client
 {
     public static class Scopes
     {

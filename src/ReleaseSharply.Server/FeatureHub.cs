@@ -26,6 +26,16 @@ namespace ReleaseSharply.Server
             await Clients.Group(featureGroup).SendAsync("ReceiveUpdate", features);
         }
 
+        public async Task SendRemoveAsync(string featureGroup, Feature feature)
+        {
+            if (Clients == null)
+            {
+                return;
+            }
+
+            await Clients.Group(featureGroup).SendAsync("OnRemoved", feature);
+        }
+
         public override async Task OnDisconnectedAsync(Exception exception)
         {
             if (_connectionGroupMap.ContainsKey(Context.ConnectionId))

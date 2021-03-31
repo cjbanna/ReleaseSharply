@@ -1,14 +1,19 @@
 ﻿using IdentityServer4.AccessTokenValidation;
+using IdentityServer4.Models;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.IdentityModel.Tokens;
 using ReleaseSharply.Server.Data;
+using ReleaseSharply.Server.Options;
 using System;
 using System.Linq;
-using Microsoft.EntityFrameworkCore;
-using System.Data.Common;
-using Microsoft.Data.Sqlite;
+using System.Reflection;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
 
 namespace ReleaseSharply.Server
 {
@@ -19,34 +24,26 @@ namespace ReleaseSharply.Server
             var options = new ReleaseSharplyBuilderOptions();
             configure(options);
 
-            if (options.Clients?.Any() == false)
-            {
-                throw new ArgumentException("Clients cannot be empty", nameof(options.Clients));
-            }
-
-            if (options.ApiResources?.Any() == false)
-            {
-                throw new ArgumentException("ApiResources cannot be empty", nameof(options.ApiResources));
-            }
-
-            if (options.ApiScopes?.Any() == false)
-            {
-                throw new ArgumentException("ApiScopes cannot be empty", nameof(options.ApiScopes));
-            }
-
             services.AddSignalR();
 
             services
                 .AddSingleton<FeatureHub>()
-                .AddTransient<SeedDataGenerator>()
+                .AddTransient<FeaturesDbSeedDataGenerator>()
                 .AddTransient<IFeatureManager, FeatureManager>();
 
             services.AddDbContext<FeaturesDbContext>(dbContextOptions =>
             {
-                //dbContextOptions.UseSqlite(CreateInMemoryDatabase());
-                dbContextOptions.UseSqlite("Filename=ReleaseSharply.db");
-                //}, ServiceLifetime.Singleton, ServiceLifetime.Singleton);
+                if (!string.IsNullOrWhiteSpace(options.SqlServerConnectionString))
+                {
+                    dbContextOptions.UseSqlServer(options.SqlServerConnectionString);
+                }
+                else
+                {
+                    dbContextOptions.UseSqlite("Filename=ReleaseSharply.db");
+                }
             });
+
+            var configOptions = new ReleaseSharplyOptions();
 
             var isDevelopment = false;
             using (var scope = services.BuildServiceProvider().CreateScope())
@@ -54,32 +51,59 @@ namespace ReleaseSharply.Server
                 var env = scope.ServiceProvider.GetService<IWebHostEnvironment>();
                 isDevelopment = env.IsDevelopment();
 
-                var s = scope.ServiceProvider.GetService<SeedDataGenerator>();
+                var s = scope.ServiceProvider.GetService<FeaturesDbSeedDataGenerator>();
                 s.SeedData();
+
+                var configuration = scope.ServiceProvider.GetService<IConfiguration>();
+                configuration.Bind(nameof(ReleaseSharplyOptions), configOptions);
             }
 
-            //var seedData = services.BuildServiceProvider().GetService<SeedDataGenerator>();
-            //seedData.SeedData();
+            var builder = services.AddIdentityServer();
 
-            
+            if (string.IsNullOrWhiteSpace(options.SqlServerConnectionString))
+            {
+                var apiResources = new[]
+                {
+                    new ApiResource
+                    {
+                        Name = "Features",
+                        Scopes = new string[] { Scopes.Read, Scopes.Write }
+                    }
+                };
 
-            var builder = services.AddIdentityServer()
-                .AddInMemoryClients(options.Clients)
-                .AddInMemoryApiResources(options.ApiResources)
-                .AddInMemoryApiScopes(options.ApiScopes);
+                var apiScopes = new[]
+                {
+                    new ApiScope(Scopes.Read, ""),
+                    new ApiScope(Scopes.Write, "")
+                };
 
-            if (isDevelopment)
+                builder
+                    .AddInMemoryClients(options.Clients)
+                    .AddInMemoryApiResources(apiResources)
+                    .AddInMemoryApiScopes(apiScopes);
+            }
+            else
+            {
+                var migrationsAssembly = typeof(ServiceCollectionExtensions).GetTypeInfo().Assembly.GetName().Name;
+                builder.AddConfigurationStore(idServerOptions =>
+                {
+                    idServerOptions.ConfigureDbContext = builder =>
+                        builder.UseSqlServer(options.SqlServerConnectionString,
+                            sql => sql.MigrationsAssembly(migrationsAssembly));
+                });
+            }
+
+            if (options.SigningCredentials != null)
+            {
+                builder.AddSigningCredential(options.SigningCredentials);
+            }
+            else if (isDevelopment)
             {
                 builder.AddDeveloperSigningCredential();
             }
             else
             {
-                if (options.SigningCredentials == null)
-                {
-                    throw new ArgumentNullException("signingCredentials are required for non-Development environments", nameof(options.SigningCredentials));
-                }
-
-                builder.AddSigningCredential(options.SigningCredentials);
+                throw new ArgumentNullException("signingCredentials are required for non-Development environments", nameof(options.SigningCredentials));
             }
 
             services
@@ -103,19 +127,10 @@ namespace ReleaseSharply.Server
                 .AddAuthentication(IdentityServerAuthenticationDefaults.AuthenticationScheme)
                 .AddIdentityServerAuthentication(options =>
                 {
-                    options.Authority = "https://localhost:5001";
+                    options.Authority = isDevelopment ? options.Authority ?? "https://localhost:5001" : options.Authority;
                 });
 
             return services;
-        }
-
-        private static DbConnection CreateInMemoryDatabase()
-        {
-            var connection = new SqliteConnection("Filename=:memory:");
-
-            connection.Open();
-
-            return connection;
         }
     }
 }

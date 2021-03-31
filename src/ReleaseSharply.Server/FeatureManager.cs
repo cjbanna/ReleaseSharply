@@ -63,7 +63,8 @@ namespace ReleaseSharply.Server
         {
             _dbContext.Remove(feature);
             await _dbContext.SaveChangesAsync();
-            // TODO: send SignalR message
+            var group = _dbContext.FeatureGroups.SingleOrDefault(g => g.Id == feature.FeatureGroupId);
+            await _hub.SendRemoveAsync(group.Name, feature);
         }
 
         private async Task SendFeatureUpdate(params Feature[] features)

@@ -62,6 +62,7 @@ namespace ReleaseSharply.Client
                 .Build();
 
             connection.On<Feature[]>("ReceiveUpdate", OnReceiveUpdate);
+            connection.On<Feature>("OnRemoved", OnRemoved);
             connection.Closed += Connection_Closed;
             connection.Reconnecting += Connection_Reconnecting;
             connection.Reconnected += Connection_Reconnected;
@@ -139,7 +140,7 @@ namespace ReleaseSharply.Client
 
         private void OnReceiveUpdate(Feature[] features)
         {
-            Console.WriteLine("---");
+            Console.WriteLine("--- Updated ---");
 
             var newFeatures = _features;
             foreach (var feature in features)
@@ -161,6 +162,25 @@ namespace ReleaseSharply.Client
             foreach (var feature in _features)
             {
                 Console.WriteLine($"{feature.Key}:{feature.Value.IsEnabled}");
+            }
+        }
+
+        private void OnRemoved(Feature feature)
+        {
+            Console.WriteLine("--- Removed ---");
+
+            var newFeatures = _features;
+            var idExists = newFeatures.Values.SingleOrDefault(f => f.Id == feature.Id);
+            if (idExists != null)
+            {
+                newFeatures = newFeatures.Remove(idExists.Name);
+            }
+
+            _features = newFeatures;
+
+            foreach (var f in _features)
+            {
+                Console.WriteLine($"{f.Key}:{f.Value.IsEnabled}");
             }
         }
     }

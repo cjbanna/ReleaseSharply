@@ -5,17 +5,13 @@ using System.Linq;
 
 namespace ReleaseSharply.Server.Data
 {
-    public class SeedDataGenerator
+    public class FeaturesDbSeedDataGenerator : IFeaturesDbSeedDataGenerator
     {
-        private readonly ILogger<SeedDataGenerator> _logger;
         private readonly FeaturesDbContext _dbContext;
 
-        public SeedDataGenerator(ILogger<SeedDataGenerator> logger, FeaturesDbContext dbContext)
+        public FeaturesDbSeedDataGenerator(FeaturesDbContext dbContext)
         {
-            _logger = logger;
             _dbContext = dbContext;
-
-            _logger.LogInformation(_dbContext.ContextId.InstanceId.ToString());
         }
 
         public void SeedData()
