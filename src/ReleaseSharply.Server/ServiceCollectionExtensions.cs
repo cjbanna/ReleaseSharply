@@ -3,32 +3,26 @@ using IdentityServer4.Models;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.IdentityModel.Tokens;
 using ReleaseSharply.Server.Data;
 using ReleaseSharply.Server.Options;
 using System;
-using System.Linq;
 using System.Reflection;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
 
 namespace ReleaseSharply.Server
 {
     public static class ServiceCollectionExtensions
     {
-        public static IServiceCollection AddReleaseSharply(this IServiceCollection services, Action<ReleaseSharplyBuilderOptions> configure)
+        public static IServiceCollection AddReleaseSharply(this IServiceCollection services, Action<ReleaseSharplyOptions> configure)
         {
-            var options = new ReleaseSharplyBuilderOptions();
+            var options = new ReleaseSharplyOptions();
             configure(options);
 
             services.AddSignalR();
 
             services
                 .AddSingleton<FeatureHub>()
-                .AddTransient<FeaturesDbSeedDataGenerator>()
                 .AddTransient<IFeatureManager, FeatureManager>();
 
             services.AddDbContext<FeaturesDbContext>(dbContextOptions =>
@@ -51,11 +45,8 @@ namespace ReleaseSharply.Server
                 var env = scope.ServiceProvider.GetService<IWebHostEnvironment>();
                 isDevelopment = env.IsDevelopment();
 
-                var s = scope.ServiceProvider.GetService<FeaturesDbSeedDataGenerator>();
-                s.SeedData();
-
-                var configuration = scope.ServiceProvider.GetService<IConfiguration>();
-                configuration.Bind(nameof(ReleaseSharplyOptions), configOptions);
+                var dbContext = scope.ServiceProvider.GetService<FeaturesDbContext>();
+                dbContext.Database.EnsureCreated();
             }
 
             var builder = services.AddIdentityServer();
@@ -67,7 +58,7 @@ namespace ReleaseSharply.Server
                     new ApiResource
                     {
                         Name = "Features",
-                        Scopes = new string[] { Scopes.Read, Scopes.Write }
+                        Scopes = new [] { Scopes.Read, Scopes.Write }
                     }
                 };
 
@@ -85,12 +76,18 @@ namespace ReleaseSharply.Server
             else
             {
                 var migrationsAssembly = typeof(ServiceCollectionExtensions).GetTypeInfo().Assembly.GetName().Name;
-                builder.AddConfigurationStore(idServerOptions =>
-                {
-                    idServerOptions.ConfigureDbContext = builder =>
-                        builder.UseSqlServer(options.SqlServerConnectionString,
+                builder
+                    //.AddTestUsers(TestUsers.Users)
+                    .AddConfigurationStore(storeOptions =>
+                    {
+                        storeOptions.ConfigureDbContext = b => b.UseSqlServer(options.SqlServerConnectionString,
                             sql => sql.MigrationsAssembly(migrationsAssembly));
-                });
+                    })
+                    .AddOperationalStore(storeOptions =>
+                    {
+                        storeOptions.ConfigureDbContext = b => b.UseSqlServer(options.SqlServerConnectionString,
+                            sql => sql.MigrationsAssembly(migrationsAssembly));
+                    });
             }
 
             if (options.SigningCredentials != null)

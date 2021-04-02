@@ -8,5 +8,9 @@
     <ProjectReference Include="..\..\src\ReleaseSharply.Server\ReleaseSharply.Server.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Controllers\" />
+  </ItemGroup>
+
 
 </Project>

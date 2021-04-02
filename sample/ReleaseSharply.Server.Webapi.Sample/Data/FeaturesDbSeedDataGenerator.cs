@@ -1,11 +1,11 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using ReleaseSharply.Server.Data;
 using ReleaseSharply.Server.Models;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace ReleaseSharply.Server.Data
+namespace ReleaseSharply.Server.Webapi.Sample.Data
 {
-    public class FeaturesDbSeedDataGenerator : IFeaturesDbSeedDataGenerator
+    public class FeaturesDbSeedDataGenerator
     {
         private readonly FeaturesDbContext _dbContext;
 
@@ -16,15 +16,13 @@ namespace ReleaseSharply.Server.Data
 
         public void SeedData()
         {
-            if (_dbContext.Database.EnsureCreated())
+            var existing = _dbContext.FeatureGroups.SingleOrDefault(g => g.Name == "ConsoleFeatures");
+            if (existing == null)
             {
-                var existing = _dbContext.FeatureGroups.SingleOrDefault(g => g.Name == "ConsoleFeatures");
-                if (existing == null)
+                _dbContext.FeatureGroups.Add(new FeatureGroup
                 {
-                    _dbContext.FeatureGroups.Add(new FeatureGroup
-                    {
-                        Name = "ConsoleFeatures",
-                        Features = new List<Feature>
+                    Name = "ConsoleFeatures",
+                    Features = new List<Feature>
                         {
                             new Feature
                             {
@@ -37,10 +35,9 @@ namespace ReleaseSharply.Server.Data
                                 IsEnabled = false
                             }
                         }
-                    });
+                });
 
-                    _dbContext.SaveChanges();
-                }
+                _dbContext.SaveChanges();
             }
         }
     }

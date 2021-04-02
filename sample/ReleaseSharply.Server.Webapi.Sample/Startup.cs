@@ -1,15 +1,15 @@
-using IdentityServer4.Models;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
+using ReleaseSharply.Server.Data;
 using ReleaseSharply.Server.Options;
+using ReleaseSharply.Server.Webapi.Sample.Data;
 using ReleaseSharply.Server.Webapi.Sample.Options;
 using System;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 
 namespace ReleaseSharply.Server.Webapi.Sample
 {
@@ -25,31 +25,23 @@ namespace ReleaseSharply.Server.Webapi.Sample
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
+            services.AddTransient<FeaturesDbSeedDataGenerator>();
+
             services.AddControllers();
 
             services.AddReleaseSharply(options =>
             {
-                options.Clients = new[]
-                {
-                    // TODO: make this into a builder? Use Azure Key Vault as example?
-                    // .AddClient(string clientId, string secret).WithReadScope()
-                    // .AddClient().WithWriteScope()
+                options
+                    .AddInMemoryClient(client => client
+                        .WithClientId("ConsoleClient")
+                        .WithSecret("SuperSecretPassword")
+                        .WithReadScope());
 
-                    new Client
-                    {
-                        ClientId = "ConsoleClient",
-                        AllowedGrantTypes = GrantTypes.ClientCredentials,
-                        ClientSecrets = new[] { new Secret("SuperSecretPassword".Sha256()) },
-                        AllowedScopes = new[] { "features.read" }
-                    },
-                    new Client
-                    {
-                        ClientId = "pub",
-                        AllowedGrantTypes = GrantTypes.ClientCredentials,
-                        ClientSecrets = new[] { new Secret("SuperSecretPassword".Sha256()) },
-                        AllowedScopes = new[] { "features.write" }
-                    }
-                };
+                options
+                    .AddInMemoryClient(client => client
+                        .WithClientId("pub")
+                        .WithSecret("SuperSecretPassword")
+                        .WithWriteScope());
 
                 // Setup localhost SSL cert
                 var appOptions = new ConsoleAppOptions();
@@ -61,8 +53,13 @@ namespace ReleaseSharply.Server.Webapi.Sample
                     var certificate = new X509Certificate2(bytes, appOptions.CertificatePassword);
                     options.SigningCredentials = new X509SigningCredentials(certificate);
                 }
-            });
 
+                // TODO: 
+                // 1. Authority using different domain
+                // 2. Sql server backing store
+
+                options.SqlServerConnectionString = "Server=release-sharply.database.windows.net;Database=ReleaseSharply;User Id=ReleaseSharplyAdmin;Password=TEES*zean8stad9caix;";
+            });
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -77,13 +74,18 @@ namespace ReleaseSharply.Server.Webapi.Sample
 
             app.UseRouting();
 
+            using (var scope = app.ApplicationServices.CreateScope())
+            {
+                var seeder = scope.ServiceProvider.GetService<FeaturesDbSeedDataGenerator>();
+                seeder.SeedData();
+            }
+
             app.UseReleaseSharply();
 
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapControllers();
             });
-
         }
     }
 }

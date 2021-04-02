@@ -1,8 +1,12 @@
-﻿using Microsoft.AspNetCore.Builder;
+﻿using IdentityServer4.EntityFramework.DbContexts;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using ReleaseSharply.Server.Extensions;
 using ReleaseSharply.Server.Models;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 
@@ -12,6 +16,7 @@ namespace ReleaseSharply.Server
     {
         public static IApplicationBuilder UseReleaseSharply(this IApplicationBuilder app)
         {
+            app.InitializeDatabase();
             app.UseIdentityServer();
             app.UseAuthentication();
             app.UseAuthorization();
@@ -23,8 +28,6 @@ namespace ReleaseSharply.Server
                     .RequireAuthorization(nameof(Policies.FeatureFlagRead));
 
                 var featureHub = endpoints.ServiceProvider.GetService<FeatureHub>();
-
-                
 
                 // FeatureGroup Subscribe
                 endpoints.MapPost("api/featureGroups/{featureGroup}/subscribe", async context =>
