@@ -8,8 +8,8 @@ namespace ReleaseSharply.Server.Data
         public FeaturesDbContext(DbContextOptions<FeaturesDbContext> options)
             : base(options) { }
 
-        public DbSet<Models.FeatureGroup> FeatureGroups { get; set; }
-        public DbSet<Models.Feature> Features { get; set; }
+        public DbSet<FeatureGroup> FeatureGroups { get; set; }
+        public DbSet<Feature> Features { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

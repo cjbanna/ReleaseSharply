@@ -45,8 +45,8 @@ namespace ReleaseSharply.Server
                 var env = scope.ServiceProvider.GetService<IWebHostEnvironment>();
                 isDevelopment = env.IsDevelopment();
 
-                var dbContext = scope.ServiceProvider.GetService<FeaturesDbContext>();
-                dbContext.Database.EnsureCreated();
+                //var dbContext = scope.ServiceProvider.GetService<FeaturesDbContext>();
+                //dbContext.Database.EnsureCreated();
             }
 
             var builder = services.AddIdentityServer();
@@ -77,7 +77,6 @@ namespace ReleaseSharply.Server
             {
                 var migrationsAssembly = typeof(ServiceCollectionExtensions).GetTypeInfo().Assembly.GetName().Name;
                 builder
-                    //.AddTestUsers(TestUsers.Users)
                     .AddConfigurationStore(storeOptions =>
                     {
                         storeOptions.ConfigureDbContext = b => b.UseSqlServer(options.SqlServerConnectionString,
