@@ -4,7 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
-using ReleaseSharply.Server.Data;
+using ReleaseSharply.Server.Extensions;
 using ReleaseSharply.Server.Options;
 using ReleaseSharply.Server.Webapi.Sample.Data;
 using ReleaseSharply.Server.Webapi.Sample.Options;
@@ -22,7 +22,6 @@ namespace ReleaseSharply.Server.Webapi.Sample
 
         public IConfiguration Configuration { get; }
 
-        // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
             services.AddTransient<FeaturesDbSeedDataGenerator>();
@@ -44,25 +43,23 @@ namespace ReleaseSharply.Server.Webapi.Sample
                         .WithWriteScope());
 
                 // Setup localhost SSL cert
-                var appOptions = new ConsoleAppOptions();
-                Configuration.Bind(nameof(ConsoleAppOptions), appOptions);
+                //var appOptions = new SampleAppOptions();
+                //Configuration.Bind(nameof(SampleAppOptions), appOptions);
 
-                if (!string.IsNullOrWhiteSpace(appOptions.CertificateBase64))
-                {
-                    var bytes = Convert.FromBase64String(appOptions.CertificateBase64);
-                    var certificate = new X509Certificate2(bytes, appOptions.CertificatePassword);
-                    options.SigningCredentials = new X509SigningCredentials(certificate);
-                }
+                //if (!string.IsNullOrWhiteSpace(appOptions.CertificateBase64))
+                //{
+                //    var bytes = Convert.FromBase64String(appOptions.CertificateBase64);
+                //    var certificate = new X509Certificate2(bytes, appOptions.CertificatePassword);
+                //    options.SigningCredentials = new X509SigningCredentials(certificate);
+                //}
 
                 // TODO: 
                 // 1. Authority using different domain
-                // 2. Sql server backing store
 
-                options.SqlServerConnectionString = "Server=release-sharply.database.windows.net;Database=ReleaseSharply;User Id=ReleaseSharplyAdmin;Password=TEES*zean8stad9caix;";
+                //options.SqlServerConnectionString = Configuration.GetConnectionString("ReleaseSharplyConnectionString");
             });
         }
 
-        // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
             if (env.IsDevelopment())

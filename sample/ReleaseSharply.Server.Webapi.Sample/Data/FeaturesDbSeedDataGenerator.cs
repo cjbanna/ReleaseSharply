@@ -16,13 +16,15 @@ namespace ReleaseSharply.Server.Webapi.Sample.Data
 
         public void SeedData()
         {
-            var existing = _dbContext.FeatureGroups.SingleOrDefault(g => g.Name == "ConsoleFeatures");
-            if (existing == null)
+            if (_dbContext.Database.EnsureCreated())
             {
-                _dbContext.FeatureGroups.Add(new FeatureGroup
+                var existing = _dbContext.FeatureGroups.SingleOrDefault(g => g.Name == "ConsoleFeatures");
+                if (existing == null)
                 {
-                    Name = "ConsoleFeatures",
-                    Features = new List<Feature>
+                    _dbContext.FeatureGroups.Add(new FeatureGroup
+                    {
+                        Name = "ConsoleFeatures",
+                        Features = new List<Feature>
                         {
                             new Feature
                             {
@@ -35,9 +37,10 @@ namespace ReleaseSharply.Server.Webapi.Sample.Data
                                 IsEnabled = false
                             }
                         }
-                });
+                    });
 
-                _dbContext.SaveChanges();
+                    _dbContext.SaveChanges();
+                }
             }
         }
     }

@@ -3,21 +3,29 @@ using IdentityServer4.Models;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using ReleaseSharply.Server.Data;
 using System.Collections.Generic;
 using System.Linq;
 using Entities = IdentityServer4.EntityFramework.Entities;
 
 namespace ReleaseSharply.Server.Extensions
 {
-    public static class IApplicationBuilderExtensions
+    public static class ApplicationBuilderExtensions
     {
         public static void InitializeDatabase(this IApplicationBuilder app)
         {
             using (var serviceScope = app.ApplicationServices.GetService<IServiceScopeFactory>().CreateScope())
             {
-                serviceScope.ServiceProvider.GetRequiredService<PersistedGrantDbContext>().Database.Migrate();
+                var featuresDbContext = serviceScope.ServiceProvider.GetRequiredService<FeaturesDbContext>();
+                featuresDbContext.Database.EnsureCreated();
 
-                var context = serviceScope.ServiceProvider.GetRequiredService<ConfigurationDbContext>();
+                var context = serviceScope.ServiceProvider.GetService<ConfigurationDbContext>();
+                if (context == null)
+                {
+                    // just bail if no context is setup
+                    return;
+                }
+
                 context.Database.Migrate();
                 
                 if (!context.Clients.Any())
@@ -32,6 +40,15 @@ namespace ReleaseSharply.Server.Extensions
                             ClientId = "ConsoleClient",
                             ClientSecrets = new List<Entities.ClientSecret> { new Entities.ClientSecret { Value = "SuperSecretPassword".Sha256() } },
                             AllowedScopes = new List<Entities.ClientScope> { new Entities.ClientScope {  Scope = Scopes.Read} }
+                        },
+                        new Entities.Client
+                        {
+                            AllowedGrantTypes = GrantTypes.ClientCredentials
+                                .Select(c => new Entities.ClientGrantType { GrantType = c })
+                                .ToList(),
+                            ClientId = "pub",
+                            ClientSecrets = new List<Entities.ClientSecret> { new Entities.ClientSecret { Value = "SuperSecretPassword".Sha256() } },
+                            AllowedScopes = new List<Entities.ClientScope> { new Entities.ClientScope {  Scope = Scopes.Write} }
                         }
                     };
                     context.Clients.AddRange(clients);

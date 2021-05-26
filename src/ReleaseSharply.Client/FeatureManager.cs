@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -21,39 +22,30 @@ namespace ReleaseSharply.Client
         private string _authToken;
         private DateTime _tokenExpiration = DateTime.MinValue;
         private ImmutableDictionary<string, Feature> _features;
-        private readonly string _serverHostName;
-        private readonly string _featureGroup;
-        private readonly string _username;
-        private readonly string _password;
-        private readonly string _scope;
+        private ILogger<FeatureManager> _logger;
+        private ReleaseSharplyClientOptions _clientOptions;
 
         public FeatureManager(
-            string serverHostName,
-            string featureGroup,
-            string username,
-            string password,
-            string scope)
+            ReleaseSharplyClientOptions clientOptions,
+            ILogger<FeatureManager> logger)
         {
             _features = ImmutableDictionary<string, Feature>.Empty;
-            _serverHostName = serverHostName;
-            _featureGroup = featureGroup;
-            _username = username;
-            _password = password;
-            _scope = scope;
+            _clientOptions = clientOptions;
+            _logger = logger;
         }
 
         public async Task<bool> IsEnabledAsync(string featureName)
         {
-            var feature = default(Feature);
-            _features.TryGetValue(featureName, out feature);
+            _features.TryGetValue(featureName, out Feature feature);
             var isEnabled = feature?.IsEnabled == true;
             return await Task.FromResult(isEnabled);
         }
 
         public async Task StartAsync()
         {
+            var url = $"{_clientOptions.ServerHostname}/featurehub";
             var connection = new HubConnectionBuilder()
-                .WithUrl($"{_serverHostName}/featurehub", HttpTransportType.ServerSentEvents, options =>
+                .WithUrl(url, HttpTransportType.ServerSentEvents, options =>
                 {
                     options.AccessTokenProvider = () => GetTokenAsync();
                 })
@@ -62,27 +54,43 @@ namespace ReleaseSharply.Client
 
             connection.On<Feature[]>("ReceiveUpdate", OnReceiveUpdate);
             connection.On<Feature>("OnRemoved", OnRemoved);
-            connection.Closed += Connection_Closed;
-            connection.Reconnecting += Connection_Reconnecting;
-            connection.Reconnected += Connection_Reconnected;
+            connection.Closed += OnClosedAsync;
+            connection.Reconnecting += OnReconnectingAsync;
+            connection.Reconnected += OnReconnectedAsync;
 
-            await connection.StartAsync();
+            _logger.LogInformation($"Connecting to {url}");
+
+            try
+            {
+                await connection.StartAsync();
+                _logger.LogInformation($"Connected to ReleaseSharply at {url}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to connect to ReleaseSharply server");
+                throw;
+            }
+
             _features = await RefreshFeaturesAsync();
-            await SubscribeToFeatureGroup();
+            _logger.LogInformation(string.Join(',', _features.Select(f => $"{f.Key}:{f.Value.IsEnabled}")));
+
+            await SubscribeToFeatureGroupAsync();
         }
 
         private async Task<string> GetTokenAsync()
         {
             if (string.IsNullOrEmpty(_authToken) || DateTime.Now >= _tokenExpiration)
             {
-                var dict = new Dictionary<string, string>();
-                dict.Add("grant_type", "client_credentials");
-                dict.Add("scope", _scope);
-                dict.Add("client_id", _username);
-                dict.Add("client_secret", _password);
+                var dict = new Dictionary<string, string>
+                {
+                    { "grant_type", "client_credentials" },
+                    { "scope", Scopes.Read },
+                    { "client_id", _clientOptions.Username },
+                    { "client_secret", _clientOptions.Password }
+                };
 
                 var client = new HttpClient();
-                var response = await client.PostAsync($"{_serverHostName}/connect/token", new FormUrlEncodedContent(dict));
+                var response = await client.PostAsync($"{_clientOptions.ServerHostname}/connect/token", new FormUrlEncodedContent(dict));
                 response.EnsureSuccessStatusCode();
                 var body = await response.Content.ReadAsStringAsync();
                 var token = JsonSerializer.Deserialize<AuthToken>(body);
@@ -97,13 +105,15 @@ namespace ReleaseSharply.Client
         {
             var client = new HttpClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _authToken);
-            var url = $"{_serverHostName}/api/features?featureGroup={_featureGroup}";
+
+            var url = $"{_clientOptions.ServerHostname}/api/features?featureGroup={_clientOptions.FeatureGroup}";
+            _logger.LogInformation($"Refresh features {url}");
+
             var response = await client.GetAsync(url);
             response.EnsureSuccessStatusCode();
             var body = await response.Content.ReadAsStringAsync();
-            var features = JsonSerializer.Deserialize<Feature[]>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            Console.WriteLine(body);
 
+            var features = JsonSerializer.Deserialize<Feature[]>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             var newFeatures = ImmutableDictionary<string, Feature>.Empty;
             foreach (var feature in features)
             {
@@ -112,34 +122,37 @@ namespace ReleaseSharply.Client
             return newFeatures;
         }
 
-        private async Task SubscribeToFeatureGroup()
+        private async Task SubscribeToFeatureGroupAsync()
         {
             var client = new HttpClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _authToken);
-            var response = await client.PostAsync($"{_serverHostName}/api/featureGroups/{_featureGroup}/subscribe", null);
+            var response = await client.PostAsync($"{_clientOptions.ServerHostname}/api/featureGroups/{_clientOptions.FeatureGroup}/subscribe", null);
             response.EnsureSuccessStatusCode();
         }
 
-        private async Task Connection_Reconnected(string arg)
+        private async Task OnReconnectedAsync(string arg)
         {
+            _logger.LogInformation("Reconnected");
+
             await RefreshFeaturesAsync();
-            await SubscribeToFeatureGroup();
+            await SubscribeToFeatureGroupAsync();
         }
 
-        private async Task Connection_Reconnecting(Exception arg)
+        private async Task OnReconnectingAsync(Exception arg)
         {
-            Console.WriteLine("Reconnecting");
-            return;
+            _logger.LogInformation("Reconnecting");
+            await Task.CompletedTask;
         }
 
-        private Task Connection_Closed(Exception arg)
+        private async Task OnClosedAsync(Exception arg)
         {
-            throw new NotImplementedException();
+            _logger.LogInformation("Connection closed");
+            await Task.CompletedTask;
         }
 
         private void OnReceiveUpdate(Feature[] features)
         {
-            Console.WriteLine("--- Updated ---");
+            _logger.LogInformation("OnReceiveUpdate");
 
             var newFeatures = _features;
             foreach (var feature in features)
@@ -158,15 +171,12 @@ namespace ReleaseSharply.Client
 
             _features = newFeatures;
 
-            foreach (var feature in _features)
-            {
-                Console.WriteLine($"{feature.Key}:{feature.Value.IsEnabled}");
-            }
+            _logger.LogInformation(string.Join(',', _features.Select(f => $"{f.Key}:{f.Value.IsEnabled}")));
         }
 
         private void OnRemoved(Feature feature)
         {
-            Console.WriteLine("--- Removed ---");
+            _logger.LogInformation("OnRemoved");
 
             var newFeatures = _features;
             var idExists = newFeatures.Values.SingleOrDefault(f => f.Id == feature.Id);
@@ -177,10 +187,7 @@ namespace ReleaseSharply.Client
 
             _features = newFeatures;
 
-            foreach (var f in _features)
-            {
-                Console.WriteLine($"{f.Key}:{f.Value.IsEnabled}");
-            }
+            _logger.LogInformation(string.Join(',', _features.Select(f => $"{f.Key}:{f.Value.IsEnabled}")));
         }
     }
 }
